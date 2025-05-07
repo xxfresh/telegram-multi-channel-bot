@@ -58,7 +58,7 @@ def register_channel(client, message: Message):
         return
     config["channels"][str(chat.id)] = chat.title
     save_config()
-    message.reply(f"Channel "{chat.title}" registered.")
+    message.reply(f'Channel "{chat.title}" registered.')
 
 @app.on_message(filters.command("admin") & filters.private)
 def admin_panel(client, message: Message):
