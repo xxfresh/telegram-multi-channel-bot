@@ -20,9 +20,9 @@ def save_config():
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=2)
 
-api_id = 123456  # REPLACE
-api_hash = "your_api_hash"  # REPLACE
-bot_token = "your_bot_token"  # REPLACE
+api_id = 19662976  # REPLACE
+api_hash = "97cfb26df0a49ab11fa482a5bf660019"  # REPLACE
+bot_token = "7897472040:AAFb-61va2ltLckzDDoBMozbzYU7MgvtiEQ"  # REPLACE
 
 app = Client("multi_channel_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
 
