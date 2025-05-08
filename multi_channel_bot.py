@@ -1,3 +1,13 @@
+import sys
+import traceback
+
+try:
+    print("🚀 Bot starting...")
+    # Your bot code starts here (e.g., import Client, handlers, etc.)
+except Exception:
+    traceback.print_exc()
+    sys.exit(1)
+
 from pyrogram import Client, filters
 from pyrogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton,
