@@ -1,17 +1,7 @@
-import sys
-import traceback
-
-try:
-    print("🚀 Bot starting...")
-    # Your bot code starts here (e.g., import Client, handlers, etc.)
-except Exception:
-    traceback.print_exc()
-    sys.exit(1)
-
 from pyrogram import Client, filters
 from pyrogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton,
-    Message, CallbackQuery, ChatJoinRequest
+    Message, CallbackQuery, ChatJoinRequest, InputMediaPhoto, InputMediaVideo
 )
 import json
 import os
@@ -43,7 +33,7 @@ def save_config():
 # --- Bot Credentials ---
 api_id = 19662976
 api_hash = "97cfb26df0a49ab11fa482a5bf660019"
-bot_token = "7897472040:AAFb-61va2ltLckzDDoBMozbzYU7MgvtiEQ"
+bot_token = "7901643414:AAFl5rSHI1r7HKwlW9QXiHo4fFqdpPE9Zu8"
 
 app = Client("multi_channel_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
 
@@ -65,12 +55,19 @@ def accept_join_request(client, join_request: ChatJoinRequest):
     logger.info(f"Approved join for user {user.id} in {chat_id}")
 
     msg_data = config["welcome_messages"].get(chat_id, {})
-    text = msg_data.get("text", "Welcome!")
+    caption = msg_data.get("text", "Welcome!")
     buttons = msg_data.get("buttons", [])
     markup = InlineKeyboardMarkup([[InlineKeyboardButton(btn["text"], url=btn["url"])] for btn in buttons]) if buttons else None
 
     try:
-        client.send_message(user.id, text, reply_markup=markup)
+        media_type = msg_data.get("type")
+        media_id = msg_data.get("media_id")
+        if media_type == "photo":
+            client.send_photo(user.id, media=media_id, caption=caption, reply_markup=markup)
+        elif media_type == "video":
+            client.send_video(user.id, video=media_id, caption=caption, reply_markup=markup)
+        else:
+            client.send_message(user.id, caption, reply_markup=markup)
     except Exception as e:
         logger.error(f"Failed to send welcome message to {user.id}: {e}")
 
@@ -79,7 +76,7 @@ def accept_join_request(client, join_request: ChatJoinRequest):
         save_config()
         logger.info(f"New user added to list: {user.id}")
 
-# --- Register Channel by Forward ---
+# --- Register Channel ---
 @app.on_message(filters.forwarded & filters.private)
 def register_channel(client, message: Message):
     user_id = message.from_user.id
@@ -93,7 +90,6 @@ def register_channel(client, message: Message):
 
     config["channels"][str(chat.id)] = chat.title
     save_config()
-    logger.info(f"Channel registered by {user_id}: {chat.title}")
     message.reply(f'Channel "{chat.title}" registered.')
 
 # --- Admin Panel ---
@@ -108,7 +104,7 @@ def admin_panel(client, message: Message):
     ]
     message.reply("Admin Panel:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# --- Handle Callback Queries ---
+# --- Admin Callback Handlers ---
 states = {}
 
 @app.on_callback_query()
@@ -119,78 +115,101 @@ def callback_handler(client, callback_query: CallbackQuery):
 
     if callback_query.data == "set_welcome":
         client.send_message(user_id, "Send the channel ID you want to set welcome message for:")
-        states[user_id] = "awaiting_channel_for_welcome"
-        logger.info(f"{user_id} is setting a welcome message")
+        states[user_id] = {"step": "awaiting_channel"}
 
     elif callback_query.data == "broadcast":
-        client.send_message(user_id, "Send the message you want to broadcast:")
-        states[user_id] = "awaiting_broadcast"
-        logger.info(f"{user_id} is preparing a broadcast")
+        client.send_message(user_id, "Send the message (text/media) to broadcast:")
+        states[user_id] = {"step": "awaiting_broadcast"}
 
     elif callback_query.data == "stats":
         user_count = len(config["users"])
         channel_count = len(config["channels"])
         client.send_message(user_id, f"Users: {user_count}\nChannels: {channel_count}")
-        logger.info(f"{user_id} requested stats")
 
-# --- Handle Responses to Admin State ---
+# --- Admin State Logic ---
 @app.on_message(filters.private)
-def state_responses(client, message: Message):
+def handle_admin_states(client, message: Message):
     user_id = message.from_user.id
     if not is_admin(user_id):
         return
+
     state = states.get(user_id)
 
-    if state == "awaiting_channel_for_welcome":
-        states[user_id] = {"channel": message.text}
-        message.reply("Now send the welcome message text:")
-        logger.info(f"{user_id} set channel to {message.text}")
+    if not state:
+        return
 
-    elif state and isinstance(state, dict) and "channel" in state and "text" not in state:
+    # --- Welcome Flow ---
+    if state.get("step") == "awaiting_channel":
+        states[user_id] = {"channel": message.text, "step": "awaiting_welcome"}
+        message.reply("Send the welcome message text or caption:")
+
+    elif state.get("step") == "awaiting_welcome":
         states[user_id]["text"] = message.text
-        message.reply("Now send buttons (format: text=url, one per line). Send 'done' to finish.")
-        logger.info(f"{user_id} set welcome text")
+        states[user_id]["step"] = "awaiting_buttons"
+        message.reply("Now send buttons (format: text=url, one per line). Send 'done' to skip.")
 
-    elif state and isinstance(state, dict) and "text" in state:
-        buttons = []
-        lines = message.text.splitlines()
-        for line in lines:
-            if "=" in line:
-                text, url = line.split("=", 1)
-                buttons.append({"text": text.strip(), "url": url.strip()})
+    elif state.get("step") == "awaiting_buttons":
+        if message.text.lower() == "done":
+            states[user_id]["buttons"] = []
+        else:
+            buttons = []
+            for line in message.text.splitlines():
+                if "=" in line:
+                    text, url = line.split("=", 1)
+                    buttons.append({"text": text.strip(), "url": url.strip()})
+            states[user_id]["buttons"] = buttons
+        states[user_id]["step"] = "awaiting_media"
+        message.reply("Optional: Send photo or video to attach to welcome message. Or send 'skip' to finish.")
+
+    elif state.get("step") == "awaiting_media":
         channel_id = states[user_id]["channel"]
-        config["welcome_messages"][channel_id] = {
+        welcome_data = {
             "text": states[user_id]["text"],
-            "buttons": buttons
+            "buttons": states[user_id]["buttons"]
         }
-        save_config()
-        message.reply("Welcome message set.")
-        logger.info(f"{user_id} set welcome message for {channel_id}")
-        states.pop(user_id, None)
 
-    elif state == "awaiting_broadcast":
-        sent = 0
-        for uid in config["users"]:
-            try:
-                client.copy_message(uid, message.chat.id, message.message_id)
-                sent += 1
-            except Exception as e:
-                logger.warning(f"Failed to send to {uid}: {e}")
-        message.reply(f"Broadcast sent to {sent} users.")
-        logger.info(f"{user_id} broadcasted to {sent} users")
-        states.pop(user_id, None)
+        if message.text and message.text.lower() == "skip":
+            pass
+        elif message.photo:
+            welcome_data["type"] = "photo"
+            welcome_data["media_id"] = message.photo.file_id
+        elif message.video:
+            welcome_data["type"] = "video"
+            welcome_data["media_id"] = message.video.file_id
+
+        config["welcome_messages"][channel_id] = welcome_data
+        save_config()
+        message.reply("✅ Welcome message set.")
+        states.pop(user_id)
+
+# --- Broadcast Handler ---
+@app.on_message(filters.private & ~filters.command(["start", "admin"]))
+async def handle_broadcast(client, message: Message):
+    user_id = message.from_user.id
+    state = states.get(user_id)
+    if not state or state.get("step") != "awaiting_broadcast":
+        return
+
+    sent = failed = 0
+    for uid in config["users"]:
+        try:
+            await client.copy_message(uid, message.chat.id, message.message_id)
+            sent += 1
+        except Exception as e:
+            failed += 1
+            logger.warning(f"❌ Failed to send to {uid}: {e}")
+    await message.reply(f"✅ Broadcast complete:\nSent: {sent}\nFailed: {failed}")
+    states.pop(user_id, None)
 
 # --- Start Command ---
 @app.on_message(filters.command("start") & filters.private)
-def start(client, message: Message):
+async def start_handler(client, message: Message):
     user_id = message.from_user.id
     if user_id not in config["admins"]:
         config["admins"].append(user_id)
         save_config()
-        logger.info(f"New admin added via /start: {user_id}")
-    message.reply("Bot is running. Use /admin to open the panel.")
-    logger.info(f"{user_id} used /start")
+    await message.reply("✅ Bot is running.\nUse /admin to open the panel.")
 
-# --- Run the Bot ---
+# --- Run Bot ---
 logger.info("Starting bot...")
 app.run()
