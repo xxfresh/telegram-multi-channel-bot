@@ -31,11 +31,11 @@ def save_config():
     logger.info("Configuration saved.")
 
 # --- Bot Credentials ---
-api_id = 19662976
-api_hash = "97cfb26df0a49ab11fa482a5bf660019"
-bot_token = "7901643414:AAFl5rSHI1r7HKwlW9QXiHo4fFqdpPE9Zu8"
+api_id = 25480339
+api_hash = "2dad95892b2ae39b059c53a7796b687f"
+bot_token = "7687213948:AAGF3X6-qxtU3PqMxrjHZwLiucOdhZiM_a0"
 
-app = Client("multi_channel_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
+app = Client("multi_channel_bot.py", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
 
 def is_admin(user_id):
     return user_id in config["admins"]
@@ -63,7 +63,7 @@ def accept_join_request(client, join_request: ChatJoinRequest):
         media_type = msg_data.get("type")
         media_id = msg_data.get("media_id")
         if media_type == "photo":
-            client.send_photo(user.id, media=media_id, caption=caption, reply_markup=markup)
+            client.send_photo(user.id, photo=media_id, caption=caption, reply_markup=markup)
         elif media_type == "video":
             client.send_video(user.id, video=media_id, caption=caption, reply_markup=markup)
         else:
@@ -118,7 +118,7 @@ def callback_handler(client, callback_query: CallbackQuery):
         states[user_id] = {"step": "awaiting_channel"}
 
     elif callback_query.data == "broadcast":
-        client.send_message(user_id, "Send the message (text/media) to broadcast:")
+        client.send_message(user_id, "📢 Send the message (text/media) to broadcast:")
         states[user_id] = {"step": "awaiting_broadcast"}
 
     elif callback_query.data == "stats":
@@ -205,10 +205,13 @@ async def handle_broadcast(client, message: Message):
 @app.on_message(filters.command("start") & filters.private)
 async def start_handler(client, message: Message):
     user_id = message.from_user.id
+    if user_id not in config["users"]:
+        config["users"].append(user_id)
+        save_config()
     if user_id not in config["admins"]:
         config["admins"].append(user_id)
         save_config()
-    await message.reply("✅ Bot is running.\nUse /admin to open the panel.")
+    await message.reply_text("✅ Bot is running.\nUse /admin to open the panel.")
 
 # --- Run Bot ---
 logger.info("Starting bot...")
