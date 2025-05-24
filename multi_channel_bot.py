@@ -117,9 +117,10 @@ def callback_handler(client, callback_query: CallbackQuery):
         client.send_message(user_id, "Send the channel ID you want to set welcome message for:")
         states[user_id] = {"step": "awaiting_channel"}
 
-    elif callback_query.data == "broadcast":
-        client.send_message(user_id, "📢 Send the message (text/media) to broadcast:")
-        states[user_id] = {"step": "awaiting_broadcast"}
+   elif callback_query.data == "broadcast":
+    await client.send_message(user_id, "📢 Send the message (text/media) to broadcast:")
+    states[user_id] = {"step": "awaiting_broadcast"}
+
 
     elif callback_query.data == "stats":
         user_count = len(config["users"])
@@ -128,25 +129,38 @@ def callback_handler(client, callback_query: CallbackQuery):
 
 # --- Admin State Logic ---
 @app.on_message(filters.private)
-def handle_admin_states(client, message: Message):
+async def handle_admin_states(client, message: Message):
     user_id = message.from_user.id
     if not is_admin(user_id):
         return
 
     state = states.get(user_id)
-
     if not state:
+        return
+
+    # --- Broadcast Flow ---
+    if state.get("step") == "awaiting_broadcast":
+        sent = failed = 0
+        for uid in config["users"]:
+            try:
+                await client.copy_message(uid, message.chat.id, message.message_id)
+                sent += 1
+            except Exception as e:
+                failed += 1
+                logger.warning(f"❌ Failed to send to {uid}: {type(e).__name__} - {e}")
+        await message.reply(f"✅ Broadcast complete:\nSent: {sent}\nFailed: {failed}")
+        states.pop(user_id, None)
         return
 
     # --- Welcome Flow ---
     if state.get("step") == "awaiting_channel":
         states[user_id] = {"channel": message.text, "step": "awaiting_welcome"}
-        message.reply("Send the welcome message text or caption:")
+        await message.reply("Send the welcome message text or caption:")
 
     elif state.get("step") == "awaiting_welcome":
         states[user_id]["text"] = message.text
         states[user_id]["step"] = "awaiting_buttons"
-        message.reply("Now send buttons (format: text=url, one per line). Send 'done' to skip.")
+        await message.reply("Now send buttons (format: text=url, one per line). Send 'done' to skip.")
 
     elif state.get("step") == "awaiting_buttons":
         if message.text.lower() == "done":
@@ -159,7 +173,7 @@ def handle_admin_states(client, message: Message):
                     buttons.append({"text": text.strip(), "url": url.strip()})
             states[user_id]["buttons"] = buttons
         states[user_id]["step"] = "awaiting_media"
-        message.reply("Optional: Send photo or video to attach to welcome message. Or send 'skip' to finish.")
+        await message.reply("Optional: Send photo or video to attach to welcome message. Or send 'skip' to finish.")
 
     elif state.get("step") == "awaiting_media":
         channel_id = states[user_id]["channel"]
@@ -179,27 +193,8 @@ def handle_admin_states(client, message: Message):
 
         config["welcome_messages"][channel_id] = welcome_data
         save_config()
-        message.reply("✅ Welcome message set.")
-        states.pop(user_id)
-
-# --- Broadcast Handler ---
-@app.on_message(filters.private & ~filters.command(["start", "admin"]))
-async def handle_broadcast(client, message: Message):
-    user_id = message.from_user.id
-    state = states.get(user_id)
-    if not state or state.get("step") != "awaiting_broadcast":
-        return
-
-    sent = failed = 0
-    for uid in config["users"]:
-        try:
-            await client.copy_message(uid, message.chat.id, message.message_id)
-            sent += 1
-        except Exception as e:
-            failed += 1
-            logger.warning(f"❌ Failed to send to {uid}: {e}")
-    await message.reply(f"✅ Broadcast complete:\nSent: {sent}\nFailed: {failed}")
-    states.pop(user_id, None)
+        await message.reply("✅ Welcome message set.")
+        states.pop(user_id, None)
 
 # --- Start Command ---
 @app.on_message(filters.command("start") & filters.private)
