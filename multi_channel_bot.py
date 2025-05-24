@@ -105,27 +105,26 @@ def admin_panel(client, message: Message):
     message.reply("Admin Panel:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 # --- Admin Callback Handlers ---
-states = {}
-
 @app.on_callback_query()
-def callback_handler(client, callback_query: CallbackQuery):
+async def callback_handler(client, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     if not is_admin(user_id):
         return
 
-    if callback_query.data == "set_welcome":
-        client.send_message(user_id, "Send the channel ID you want to set welcome message for:")
+    data = callback_query.data
+
+    if data == "set_welcome":
+        await client.send_message(user_id, "Send the channel ID you want to set welcome message for:")
         states[user_id] = {"step": "awaiting_channel"}
 
-   elif callback_query.data == "broadcast":
-    await client.send_message(user_id, "📢 Send the message (text/media) to broadcast:")
-    states[user_id] = {"step": "awaiting_broadcast"}
+    elif data == "broadcast":
+        await client.send_message(user_id, "📢 Send the message (text/media) to broadcast:")
+        states[user_id] = {"step": "awaiting_broadcast"}
 
-
-    elif callback_query.data == "stats":
+    elif data == "stats":
         user_count = len(config["users"])
         channel_count = len(config["channels"])
-        client.send_message(user_id, f"Users: {user_count}\nChannels: {channel_count}")
+        await client.send_message(user_id, f"Users: {user_count}\nChannels: {channel_count}")
 
 # --- Admin State Logic ---
 @app.on_message(filters.private)
