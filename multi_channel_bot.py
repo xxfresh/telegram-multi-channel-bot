@@ -216,3 +216,4 @@ async def start_handler(client, message: Message):
 
 # --- Run the Bot ---
 logger.info("Starting bot...")
+app.run()
