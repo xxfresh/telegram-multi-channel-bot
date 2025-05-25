@@ -103,7 +103,6 @@ async def admin_panel(client, message: Message):
 
     keyboard = [
         [InlineKeyboardButton("Set Welcome", callback_data="set_welcome")],
-        [InlineKeyboardButton("Broadcast", callback_data="broadcast")],
         [InlineKeyboardButton("Stats", callback_data="stats")]
     ]
     await message.reply("Admin Panel:", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -120,10 +119,6 @@ async def callback_handler(client, callback_query: CallbackQuery):
     if data == "set_welcome":
         await client.send_message(user_id, "Send the channel ID you want to set welcome message for:")
         states[user_id] = {"step": "awaiting_channel"}
-
-    elif data == "broadcast":
-        await client.send_message(user_id, "📢 Send the message (text/media) to broadcast:")
-        states[user_id] = {"step": "awaiting_broadcast"}
 
     elif data == "stats":
         user_count = len(config["users"])
@@ -185,24 +180,27 @@ async def handle_admin_states(client, message: Message):
         states.pop(user_id)
 
 # --- Broadcast Handler ---
-@app.on_message(filters.private & ~filters.command(["start", "admin"]))
-async def handle_broadcast(client, message: Message):
+@app.on_message(filters.command("broadcast") & filters.private)
+async def broadcast_command(client, message: Message):
     user_id = message.from_user.id
-    state = states.get(user_id)
-    if not state or state.get("step") != "awaiting_broadcast":
+    if not is_admin(user_id):
         return
 
+    if not message.reply_to_message:
+        await message.reply("❗Please reply to the message you want to broadcast.")
+        return
+
+    broadcast_msg = message.reply_to_message
     sent = failed = 0
     for uid in config["users"]:
         try:
-            await client.copy_message(uid, message.chat.id, message.message_id)
+            await client.copy_message(uid, broadcast_msg.chat.id, broadcast_msg.message_id)
             sent += 1
         except Exception as e:
+            logger.warning(f"Broadcast failed for {uid}: {e}")
             failed += 1
-            logger.warning(f"Failed to send to {uid}: {e}")
 
-    await message.reply(f"✅ Broadcast complete:\nSent: {sent}\nFailed: {failed}")
-    states.pop(user_id, None)
+    await message.reply(f"✅ Broadcast done.\nSent: {sent}\nFailed: {failed}")
 
 # --- Start Command ---
 @app.on_message(filters.command("start") & filters.private)
