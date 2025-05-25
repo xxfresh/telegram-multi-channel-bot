@@ -183,24 +183,29 @@ async def handle_admin_states(client, message: Message):
 @app.on_message(filters.command("broadcast") & filters.private)
 async def broadcast_command(client, message: Message):
     user_id = message.from_user.id
-    if not is_admin(user_id):
-        return
 
+    # Check admin
+    if user_id not in config.get("admins", []):
+        return await message.reply("❌ You are not authorized.")
+
+    # Check if it's a reply
     if not message.reply_to_message:
-        await message.reply("❗Please reply to the message you want to broadcast.")
-        return
+        return await message.reply("⚠️ Please reply to a message (text/photo/video) to broadcast.")
 
     broadcast_msg = message.reply_to_message
     sent = failed = 0
-    for uid in config["users"]:
+
+    # Loop through users
+    for uid in config.get("users", []):
         try:
-            await client.copy_message(uid, broadcast_msg.chat.id, broadcast_msg.message_id)
+            await client.copy_message(chat_id=uid, from_chat_id=broadcast_msg.chat.id, message_id=broadcast_msg.message_id)
             sent += 1
         except Exception as e:
-            logger.warning(f"Broadcast failed for {uid}: {e}")
             failed += 1
+            print(f"❌ Failed to send to {uid}: {e}")
 
-    await message.reply(f"✅ Broadcast done.\nSent: {sent}\nFailed: {failed}")
+    print(f"✅ Broadcast finished — Sent: {sent}, Failed: {failed}")
+    await message.reply(f"✅ Broadcast complete\n📬 Sent: {sent}\n❌ Failed: {failed}")
 
 # --- Start Command ---
 @app.on_message(filters.command("start") & filters.private)
