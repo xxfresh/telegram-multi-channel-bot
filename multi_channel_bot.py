@@ -125,32 +125,45 @@ async def start(client, message):
         logger.error(f"Exception in /start handler for user_id={user_id}: {e}")
 
 @app.on_message(filters.command("broadcast") & filters.private & filters.reply)
-async def broadcast_command(client, message: Message):
+async def broadcast_command(client: Client, message: Message):
     user_id = message.from_user.id
+    config = config_collection.find_one({})
 
-    # Check admin
-    config = get_config()
     if user_id not in config.get("admins", []):
-        return await message.reply("❌ You are not authorized.")
-
-    # Check if it's a reply
-    if not message.reply_to_message:
-        return await message.reply("⚠️ Please reply to a message (text/photo/video) to broadcast.")
+        await message.reply("❌ You are not authorized to use this command.")
+        logger.warning(f"Unauthorized broadcast attempt by user {user_id}")
+        return
 
     broadcast_msg = message.reply_to_message
-    sent = failed = 0
+    if not broadcast_msg:
+        await message.reply("⚠️ Please reply to a message (text, photo, or video) to broadcast.")
+        logger.warning(f"Broadcast by {user_id} failed: No replied message")
+        return
 
-    # Loop through users
-    for uid in config.get("users", []):
+    users = config.get("users", [])
+    if not users:
+        await message.reply("⚠️ No users found to broadcast to.")
+        logger.info("Broadcast aborted: No users in config")
+        return
+
+    sent = 0
+    failed = 0
+    for uid in users:
         try:
-            await client.copy_message(chat_id=uid, from_chat_id=broadcast_msg.chat.id, message_id=broadcast_msg.message_id)
+            await client.copy_message(
+                chat_id=uid,
+                from_chat_id=broadcast_msg.chat.id,
+                message_id=broadcast_msg.message_id
+            )
             sent += 1
+            logger.info(f"Successfully sent broadcast to user {uid}")
         except Exception as e:
             failed += 1
-            print(f"❌ Failed to send to {uid}: {e}")
+            logger.error(f"Failed to send broadcast to user {uid}: {e}")
 
-    print(f"✅ Broadcast finished — Sent: {sent}, Failed: {failed}")
-    await message.reply(f"✅ Broadcast complete\n📬 Sent: {sent}\n❌ Failed: {failed}")
+    response = f"✅ Broadcast complete\n📬 Sent: {sent}\n❌ Failed: {failed}"
+    await message.reply(response)
+    logger.info(f"Broadcast by {user_id} completed: Sent={sent}, Failed={failed}")
         
 @app.on_message(filters.command("admin") & filters.private)
 async def admin_panel(client, message: Message):
