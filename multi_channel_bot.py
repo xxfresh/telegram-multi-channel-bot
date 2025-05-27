@@ -1,4 +1,5 @@
 from pyrogram import Client, filters
+from pyrogram.filters import command, private, user
 from pyrogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton,
     Message, CallbackQuery, ChatJoinRequest
