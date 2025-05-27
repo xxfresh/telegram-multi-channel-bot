@@ -106,6 +106,32 @@ async def register_channel(client, message: Message):
     await message.reply(f'Channel "{chat.title}" registered.')
 
 # --- Admin Panel Command ---
+
+@app.on_message(filters.command("start"))
+async def start(client, message):
+    user_id = message.from_user.id
+    logger.info(f"/start command received from user_id={user_id}")
+
+    try:
+        config = get_config()
+        logger.info(f"Fetched config for /start: {config}")
+
+        if user_id not in config.get("users", []):
+            config["users"].append(user_id)
+            logger.info(f"Added new user {user_id} to users list.")
+        if user_id not in config.get("admins", []):
+            config["admins"].append(user_id)
+            logger.info(f"Added new admin {user_id} to admins list.")
+
+        save_config(config)
+        logger.info(f"Config saved after /start by user_id={user_id}")
+
+        await message.reply_text("✅ Bot is running.\nUse /admin to open the panel.")
+        logger.info(f"Replied to /start for user_id={user_id}")
+
+    except Exception as e:
+        logger.error(f"Exception in /start handler for user_id={user_id}: {e}")
+        
 @app.on_message(filters.command("admin") & filters.private)
 async def admin_panel(client, message: Message):
     if not is_admin(message.from_user.id):
@@ -219,32 +245,6 @@ async def broadcast_command(client, message: Message):
 
     print(f"✅ Broadcast finished — Sent: {sent}, Failed: {failed}")
     await message.reply(f"✅ Broadcast complete\n📬 Sent: {sent}\n❌ Failed: {failed}")
-
-# --- Start Command ---
-@app.on_message(filters.command("start"))
-async def start(client, message):
-    user_id = message.from_user.id
-    logger.info(f"/start command received from user_id={user_id}")
-
-    try:
-        config = get_config()
-        logger.info(f"Fetched config for /start: {config}")
-
-        if user_id not in config.get("users", []):
-            config["users"].append(user_id)
-            logger.info(f"Added new user {user_id} to users list.")
-        if user_id not in config.get("admins", []):
-            config["admins"].append(user_id)
-            logger.info(f"Added new admin {user_id} to admins list.")
-
-        save_config(config)
-        logger.info(f"Config saved after /start by user_id={user_id}")
-
-        await message.reply_text("✅ Bot is running.\nUse /admin to open the panel.")
-        logger.info(f"Replied to /start for user_id={user_id}")
-
-    except Exception as e:
-        logger.error(f"Exception in /start handler for user_id={user_id}: {e}")
 
 # --- Run the Bot ---
 logger.info("Starting bot...")
