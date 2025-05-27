@@ -3,8 +3,7 @@ from pyrogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton,
     Message, CallbackQuery, ChatJoinRequest
 )
-import json
-import os
+from pymongo import MongoClient
 import logging
 
 # --- Logging ---
@@ -14,34 +13,42 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# --- MongoDB Setup ---
+mongo_client = MongoClient("mongodb://localhost:27017/")  # Adjust connection string as needed
+db = mongo_client["telegram_bot"]
+config_collection = db["config"]
+
+# Initialize MongoDB collections if they don't exist
+if "config" not in db.list_collection_names():
+    config_collection.insert_one({
+        "admins": [],
+        "channels": {},
+        "welcome_messages": {},
+        "users": []
+    })
+    logger.info("Initialized MongoDB config collection.")
+
 # --- Global State ---
 states = {}
 
-# --- Load Config ---
-CONFIG_FILE = "config.json"
-if not os.path.exists(CONFIG_FILE):
-    with open(CONFIG_FILE, "w") as f:
-        json.dump({"admins": [], "channels": {}, "welcome_messages": {}, "users": []}, f)
-    logger.info("Created new config file.")
+# --- Helper Functions ---
+def get_config():
+    return config_collection.find_one({})
 
-with open(CONFIG_FILE) as f:
-    config = json.load(f)
-    logger.info("Loaded config.json")
+def save_config(config_data):
+    config_collection.update_one({}, {"$set": config_data}, upsert=True)
+    logger.info("Configuration saved to MongoDB.")
 
-def save_config():
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config, f, indent=2)
-    logger.info("Configuration saved.")
+def is_admin(user_id):
+    config = get_config()
+    return user_id in config.get("admins", [])
 
 # --- Bot Credentials ---
 api_id = 25480339
 api_hash = "2dad95892b2ae39b059c53a7796b687f"
 bot_token = "7687213948:AAGF3X6-qxtU3PqMxrjHZwLiucOdhZiM_a0"
 
-app = Client("multi_channel_bot.py", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
-
-def is_admin(user_id):
-    return user_id in config["admins"]
+app = Client("multi_channel_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
 
 # --- Join Request Handler ---
 @app.on_chat_join_request()
@@ -50,14 +57,15 @@ async def accept_join_request(client, join_request: ChatJoinRequest):
     user = join_request.from_user
     logger.info(f"Join request from {user.id} in {chat_id}")
 
-    if chat_id not in config["channels"]:
+    config = get_config()
+    if chat_id not in config.get("channels", {}):
         logger.warning(f"Channel ID {chat_id} not registered")
         return
 
     await client.approve_chat_join_request(chat_id, user.id)
     logger.info(f"Approved join for user {user.id} in {chat_id}")
 
-    msg_data = config["welcome_messages"].get(chat_id, {})
+    msg_data = config.get("welcome_messages", {}).get(chat_id, {})
     caption = msg_data.get("text", "Welcome!")
     buttons = msg_data.get("buttons", [])
     markup = InlineKeyboardMarkup([[InlineKeyboardButton(btn["text"], url=btn["url"])] for btn in buttons]) if buttons else None
@@ -74,9 +82,9 @@ async def accept_join_request(client, join_request: ChatJoinRequest):
     except Exception as e:
         logger.error(f"Failed to send welcome message to {user.id}: {e}")
 
-    if user.id not in config["users"]:
+    if user.id not in config.get("users", []):
         config["users"].append(user.id)
-        save_config()
+        save_config(config)
         logger.info(f"New user added: {user.id}")
 
 # --- Register Channel ---
@@ -91,8 +99,9 @@ async def register_channel(client, message: Message):
         await message.reply("Please forward a message from the channel.")
         return
 
+    config = get_config()
     config["channels"][str(chat.id)] = chat.title
-    save_config()
+    save_config(config)
     await message.reply(f'Channel "{chat.title}" registered.')
 
 # --- Admin Panel Command ---
@@ -121,8 +130,9 @@ async def callback_handler(client, callback_query: CallbackQuery):
         states[user_id] = {"step": "awaiting_channel"}
 
     elif data == "stats":
-        user_count = len(config["users"])
-        channel_count = len(config["channels"])
+        config = get_config()
+        user_count = len(config.get("users", []))
+        channel_count = len(config.get("channels", {}))
         await client.send_message(user_id, f"Users: {user_count}\nChannels: {channel_count}")
 
 # --- Admin Flow Handler ---
@@ -136,6 +146,7 @@ async def handle_admin_states(client, message: Message):
     if not state:
         return
 
+    config = get_config()
     if state.get("step") == "awaiting_channel":
         states[user_id] = {"channel": message.text, "step": "awaiting_welcome"}
         await message.reply("Send the welcome message text or caption:")
@@ -175,7 +186,7 @@ async def handle_admin_states(client, message: Message):
             welcome_data["media_id"] = message.video.file_id
 
         config["welcome_messages"][channel_id] = welcome_data
-        save_config()
+        save_config(config)
         await message.reply("✅ Welcome message set.")
         states.pop(user_id)
 
@@ -185,6 +196,7 @@ async def broadcast_command(client, message: Message):
     user_id = message.from_user.id
 
     # Check admin
+    config = get_config()
     if user_id not in config.get("admins", []):
         return await message.reply("❌ You are not authorized.")
 
@@ -211,12 +223,12 @@ async def broadcast_command(client, message: Message):
 @app.on_message(filters.command("start") & filters.private)
 async def start_handler(client, message: Message):
     user_id = message.from_user.id
-    if user_id not in config["users"]:
+    config = get_config()
+    if user_id not in config.get("users", []):
         config["users"].append(user_id)
-        save_config()
-    if user_id not in config["admins"]:
+    if user_id not in config.get("admins", []):
         config["admins"].append(user_id)
-        save_config()
+    save_config(config)
     await message.reply_text("✅ Bot is running.\nUse /admin to open the panel.")
 
 # --- Run the Bot ---
