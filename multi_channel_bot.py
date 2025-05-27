@@ -125,23 +125,27 @@ async def start(client, message):
 async def broadcast_command(client: Client, message: Message):
     user_id = message.from_user.id
     config = config_collection.find_one({})
-    
+
+    # Check if user is admin
     if user_id not in config.get("admins", []):
         await message.reply("❌ You are not authorized to use this command.")
         logger.warning(f"Unauthorized broadcast attempt by user {user_id}")
         return
 
+    # Get the replied message
     broadcast_msg = message.reply_to_message
     if not broadcast_msg or not hasattr(broadcast_msg, "message_id"):
         await message.reply("⚠️ Please reply to a valid message (text, photo, or video) to broadcast.")
-        logger.warning(f"Broadcast by {user_id} failed: Invalid or missing reply message")
+        logger.warning(f"Broadcast by {user_id} failed: Invalid or missing reply message, broadcast_msg={broadcast_msg}")
         return
 
+    # Check if the message is a service message
     if broadcast_msg.service:
         await message.reply("⚠️ Cannot broadcast service messages (e.g., user joined/left). Please reply to a text, photo, or video message.")
         logger.warning(f"Broadcast by {user_id} failed: Replied to a service message")
         return
 
+    # Get users from MongoDB config
     users = config.get("users", [])
     if not users:
         await message.reply("⚠️ No users found to broadcast to.")
@@ -150,6 +154,8 @@ async def broadcast_command(client: Client, message: Message):
 
     sent = 0
     failed = 0
+
+    # Broadcast to all users
     for uid in users:
         try:
             await client.copy_message(
@@ -163,6 +169,7 @@ async def broadcast_command(client: Client, message: Message):
             failed += 1
             logger.error(f"Failed to send broadcast to user {uid}: {str(e)}")
 
+    # Send summary
     response = f"✅ Broadcast complete\n📬 Sent: {sent}\n❌ Failed: {failed}"
     await message.reply(response)
     logger.info(f"Broadcast by {user_id} completed: Sent={sent}, Failed={failed}")
