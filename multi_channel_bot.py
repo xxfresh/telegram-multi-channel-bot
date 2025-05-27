@@ -134,13 +134,15 @@ async def broadcast_command(client: Client, message: Message):
 
     # Get the replied message
     broadcast_msg = message.reply_to_message
-    if not broadcast_msg or not hasattr(broadcast_msg, "message_id"):
+    logger.info(f"Replied message details: ID={getattr(broadcast_msg, 'id', None)}, Type={getattr(broadcast_msg, '_', None)}, Service={getattr(broadcast_msg, 'service', None)}, Chat={getattr(broadcast_msg.chat, 'id', None) if broadcast_msg else None}")
+    
+    if not broadcast_msg or not hasattr(broadcast_msg, "id"):
         await message.reply("⚠️ Please reply to a valid message (text, photo, or video) to broadcast.")
         logger.warning(f"Broadcast by {user_id} failed: Invalid or missing reply message, broadcast_msg={broadcast_msg}")
         return
 
     # Check if the message is a service message
-    if broadcast_msg.service:
+    if getattr(broadcast_msg, "service", None):
         await message.reply("⚠️ Cannot broadcast service messages (e.g., user joined/left). Please reply to a text, photo, or video message.")
         logger.warning(f"Broadcast by {user_id} failed: Replied to a service message")
         return
@@ -161,10 +163,11 @@ async def broadcast_command(client: Client, message: Message):
             await client.copy_message(
                 chat_id=uid,
                 from_chat_id=broadcast_msg.chat.id,
-                message_id=broadcast_msg.message_id
+                message_id=broadcast_msg.id
             )
             sent += 1
             logger.info(f"Successfully sent broadcast to user {uid}")
+            await asyncio.sleep(0.1)  # Add delay to avoid rate limits
         except Exception as e:
             failed += 1
             logger.error(f"Failed to send broadcast to user {uid}: {str(e)}")
