@@ -248,4 +248,5 @@ async def start(client, message):
 
 # --- Run the Bot ---
 logger.info("Starting bot...")
-app.run()
+if __name__ == "__main__":
+    app.run()
