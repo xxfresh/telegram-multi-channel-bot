@@ -155,11 +155,16 @@ async def broadcast_command(client: Client, message: Message):
         logger.info("Broadcast aborted: No users in config")
         return
 
+    total_users = len(users)
     sent = 0
     failed = 0
 
+    # Send initial progress message
+    progress_message = await message.reply("📢 Broadcast started...\nSent: 0\nFailed: 0\nProgress: 0%")
+    logger.info(f"Broadcast started by {user_id}, total users: {total_users}")
+
     # Broadcast to all users
-    for uid in users:
+    for i, uid in enumerate(users, 1):
         try:
             await client.copy_message(
                 chat_id=uid,
@@ -168,14 +173,29 @@ async def broadcast_command(client: Client, message: Message):
             )
             sent += 1
             logger.info(f"Successfully sent broadcast to user {uid}")
-            await asyncio.sleep(0.1)  # Add delay to avoid rate limits
         except Exception as e:
             failed += 1
             logger.error(f"Failed to send broadcast to user {uid}: {str(e)}")
 
-    # Send summary
-    response = f"✅ Broadcast complete\n📬 Sent: {sent}\n❌ Failed: {failed}"
-    await message.reply(response)
+        # Update progress UI every 5 users or at the end
+        if i % 5 == 0 or i == total_users:
+            progress = (i / total_users) * 100
+            await client.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=progress_message.id,
+                text=f"📢 Broadcast in progress...\nSent: {sent}\nFailed: {failed}\nProgress: {progress:.1f}%"
+            )
+            logger.debug(f"Progress update: Sent={sent}, Failed={failed}, Progress={progress:.1f}%")
+
+        await asyncio.sleep(0.1)  # Delay to avoid rate limits
+
+    # Send final summary
+    final_message = f"✅ Broadcast complete\n📬 Sent: {sent}\n❌ Failed: {failed}\nProgress: 100%"
+    await client.edit_message_text(
+        chat_id=message.chat.id,
+        message_id=progress_message.id,
+        text=final_message
+    )
     logger.info(f"Broadcast by {user_id} completed: Sent={sent}, Failed={failed}")
         
 @app.on_message(filters.command("admin") & filters.private)
