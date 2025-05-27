@@ -14,7 +14,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- MongoDB Setup ---
-mongo_client = MongoClient("mongodb+srv://nightlife:Nightlife@nightlife.buhsfqm.mongodb.net/?retryWrites=true&w=majority&appName=Nightlife")  # Adjust connection string as needed
+mongo_client = MongoClient("mongodb+srv://mystery:exelexa2237887@cluster0.epdqu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")  # Adjust connection string as needed
 db = mongo_client["telegram_bot"]
 config_collection = db["config"]
 
