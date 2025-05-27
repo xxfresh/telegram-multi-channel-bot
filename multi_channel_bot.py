@@ -192,7 +192,7 @@ async def handle_admin_states(client, message: Message):
         states.pop(user_id)
 
 # --- Broadcast Handler ---
-@app.on_message(filters.command("broadcast") & filters.private)
+@app.on_message(filters.command("broadcast") & filters.private & filters.reply)
 async def broadcast_command(client, message: Message):
     user_id = message.from_user.id
 
