@@ -114,23 +114,43 @@ async def start(client, message):
 
     try:
         config = get_config()
-        logger.info(f"Fetched config for /start: {config}")
-
         if user_id not in config.get("users", []):
             config["users"].append(user_id)
-            logger.info(f"Added new user {user_id} to users list.")
         if user_id not in config.get("admins", []):
             config["admins"].append(user_id)
-            logger.info(f"Added new admin {user_id} to admins list.")
-
         save_config(config)
-        logger.info(f"Config saved after /start by user_id={user_id}")
-
         await message.reply_text("✅ Bot is running.\nUse /admin to open the panel.")
-        logger.info(f"Replied to /start for user_id={user_id}")
 
     except Exception as e:
         logger.error(f"Exception in /start handler for user_id={user_id}: {e}")
+
+@app.on_message(filters.command("broadcast") & filters.private & filters.reply)
+async def broadcast_command(client, message: Message):
+    user_id = message.from_user.id
+
+    # Check admin
+    config = get_config()
+    if user_id not in config.get("admins", []):
+        return await message.reply("❌ You are not authorized.")
+
+    # Check if it's a reply
+    if not message.reply_to_message:
+        return await message.reply("⚠️ Please reply to a message (text/photo/video) to broadcast.")
+
+    broadcast_msg = message.reply_to_message
+    sent = failed = 0
+
+    # Loop through users
+    for uid in config.get("users", []):
+        try:
+            await client.copy_message(chat_id=uid, from_chat_id=broadcast_msg.chat.id, message_id=broadcast_msg.message_id)
+            sent += 1
+        except Exception as e:
+            failed += 1
+            print(f"❌ Failed to send to {uid}: {e}")
+
+    print(f"✅ Broadcast finished — Sent: {sent}, Failed: {failed}")
+    await message.reply(f"✅ Broadcast complete\n📬 Sent: {sent}\n❌ Failed: {failed}")
         
 @app.on_message(filters.command("admin") & filters.private)
 async def admin_panel(client, message: Message):
@@ -216,35 +236,6 @@ async def handle_admin_states(client, message: Message):
         save_config(config)
         await message.reply("✅ Welcome message set.")
         states.pop(user_id)
-
-# --- Broadcast Handler ---
-@app.on_message(filters.command("broadcast") & filters.private & filters.reply)
-async def broadcast_command(client, message: Message):
-    user_id = message.from_user.id
-
-    # Check admin
-    config = get_config()
-    if user_id not in config.get("admins", []):
-        return await message.reply("❌ You are not authorized.")
-
-    # Check if it's a reply
-    if not message.reply_to_message:
-        return await message.reply("⚠️ Please reply to a message (text/photo/video) to broadcast.")
-
-    broadcast_msg = message.reply_to_message
-    sent = failed = 0
-
-    # Loop through users
-    for uid in config.get("users", []):
-        try:
-            await client.copy_message(chat_id=uid, from_chat_id=broadcast_msg.chat.id, message_id=broadcast_msg.message_id)
-            sent += 1
-        except Exception as e:
-            failed += 1
-            print(f"❌ Failed to send to {uid}: {e}")
-
-    print(f"✅ Broadcast finished — Sent: {sent}, Failed: {failed}")
-    await message.reply(f"✅ Broadcast complete\n📬 Sent: {sent}\n❌ Failed: {failed}")
 
 # --- Run the Bot ---
 logger.info("Starting bot...")
