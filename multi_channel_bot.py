@@ -8,19 +8,16 @@ from pyrogram.types import (
 from pymongo import MongoClient
 import logging
 
-# --- Logging ---
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# --- MongoDB Setup ---
 mongo_client = MongoClient("mongodb+srv://mystery:exelexa2237887@cluster0.epdqu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0") 
 db = mongo_client["telegram_bot"]
 config_collection = db["config"]
 
-# Initialize MongoDB collections if they don't exist
 if "config" not in db.list_collection_names():
     config_collection.insert_one({
         "admins": [],
@@ -30,10 +27,8 @@ if "config" not in db.list_collection_names():
     })
     logger.info("Initialized MongoDB config collection.")
 
-# --- Global State ---
 states = {}
 
-# --- Helper Functions ---
 def get_config():
     return config_collection.find_one({})
 
@@ -126,14 +121,12 @@ async def start(client, message):
 async def broadcast_command(client: Client, message: Message):
     user_id = message.from_user.id
     config = config_collection.find_one({})
-
-    # Check if user is admin
+    
     if user_id not in config.get("admins", []):
         await message.reply("❌ You are not authorized to use this command.")
         logger.warning(f"Unauthorized broadcast attempt by user {user_id}")
         return
-
-    # Get the replied message
+        
     broadcast_msg = message.reply_to_message
     logger.info(f"Replied message details: ID={getattr(broadcast_msg, 'id', None)}, Type={getattr(broadcast_msg, '_', None)}, Service={getattr(broadcast_msg, 'service', None)}, Chat={getattr(broadcast_msg.chat, 'id', None) if broadcast_msg else None}")
     
@@ -141,14 +134,12 @@ async def broadcast_command(client: Client, message: Message):
         await message.reply("⚠️ Please reply to a valid message (text, photo, or video) to broadcast.")
         logger.warning(f"Broadcast by {user_id} failed: Invalid or missing reply message, broadcast_msg={broadcast_msg}")
         return
-
-    # Check if the message is a service message
+        
     if getattr(broadcast_msg, "service", None):
         await message.reply("⚠️ Cannot broadcast service messages (e.g., user joined/left). Please reply to a text, photo, or video message.")
         logger.warning(f"Broadcast by {user_id} failed: Replied to a service message")
         return
-
-    # Get users from MongoDB config
+        
     users = config.get("users", [])
     if not users:
         await message.reply("⚠️ No users found to broadcast to.")
@@ -158,12 +149,8 @@ async def broadcast_command(client: Client, message: Message):
     total_users = len(users)
     sent = 0
     failed = 0
-
-    # Send initial progress message
-    progress_message = await message.reply("📢 Broadcast started...\nSent: 0\nFailed: 0\nProgress: 0%")
+    progress_message = await message.reply("📢 Broadcast started...\n\nSent: 0\nFailed: 0\nProgress: 0%")
     logger.info(f"Broadcast started by {user_id}, total users: {total_users}")
-
-    # Broadcast to all users
     for i, uid in enumerate(users, 1):
         try:
             await client.copy_message(
@@ -176,8 +163,7 @@ async def broadcast_command(client: Client, message: Message):
         except Exception as e:
             failed += 1
             logger.error(f"Failed to send broadcast to user {uid}: {str(e)}")
-
-        # Update progress UI every 5 users or at the end
+            
         if i % 5 == 0 or i == total_users:
             progress = (i / total_users) * 100
             await client.edit_message_text(
@@ -187,9 +173,8 @@ async def broadcast_command(client: Client, message: Message):
             )
             logger.debug(f"Progress update: Sent={sent}, Failed={failed}, Progress={progress:.1f}%")
 
-        await asyncio.sleep(0.1)  # Delay to avoid rate limits
-
-    # Send final summary
+        await asyncio.sleep(0.1)
+        
     final_message = f"✅ Broadcast complete\n📬 Sent: {sent}\n❌ Failed: {failed}\nProgress: 100%"
     await client.edit_message_text(
         chat_id=message.chat.id,
