@@ -221,8 +221,8 @@ async def broadcast_command(client, message: Message):
     await message.reply(f"✅ Broadcast complete\n📬 Sent: {sent}\n❌ Failed: {failed}")
 
 # --- Start Command ---
-@app.on_message(filters.command("start") & filters.private)
-async def start_handler(client, message: Message):
+@app.on_message(filters.command("start"))
+async def start(client, message):
     user_id = message.from_user.id
     config = get_config()
     if user_id not in config.get("users", []):
