@@ -88,7 +88,6 @@ async def accept_join_request(client, join_request: ChatJoinRequest):
         save_config(config)
         logger.info(f"New user added: {user.id}")
 
-# --- Register Channel ---
 @app.on_message(filters.forwarded & filters.private)
 async def register_channel(client, message: Message):
     user_id = message.from_user.id
@@ -104,8 +103,6 @@ async def register_channel(client, message: Message):
     config["channels"][str(chat.id)] = chat.title
     save_config(config)
     await message.reply(f'Channel "{chat.title}" registered.')
-
-# --- Admin Panel Command ---
 
 @app.on_message(filters.command("start"))
 async def start(client, message):
@@ -129,17 +126,26 @@ async def broadcast_command(client: Client, message: Message):
     user_id = message.from_user.id
     config = config_collection.find_one({})
 
+    # Check if user is admin
     if user_id not in config.get("admins", []):
         await message.reply("❌ You are not authorized to use this command.")
         logger.warning(f"Unauthorized broadcast attempt by user {user_id}")
         return
 
+    # Get the replied message
     broadcast_msg = message.reply_to_message
-    if not broadcast_msg:
-        await message.reply("⚠️ Please reply to a message (text, photo, or video) to broadcast.")
-        logger.warning(f"Broadcast by {user_id} failed: No replied message")
+    if not broadcast_msg or not hasattr(broadcast_msg, "message_id"):
+        await message.reply("⚠️ Please reply to a valid message (text, photo, or video) to broadcast.")
+        logger.warning(f"Broadcast by {user_id} failed: Invalid or missing reply message")
         return
 
+    # Check if the message is a service message
+    if broadcast_msg.service:
+        await message.reply("⚠️ Cannot broadcast service messages (e.g., user joined/left). Please reply to a text, photo, or video message.")
+        logger.warning(f"Broadcast by {user_id} failed: Replied to a service message")
+        return
+
+    # Get users from MongoDB config
     users = config.get("users", [])
     if not users:
         await message.reply("⚠️ No users found to broadcast to.")
@@ -148,6 +154,8 @@ async def broadcast_command(client: Client, message: Message):
 
     sent = 0
     failed = 0
+
+    # Broadcast to all users
     for uid in users:
         try:
             await client.copy_message(
@@ -159,8 +167,9 @@ async def broadcast_command(client: Client, message: Message):
             logger.info(f"Successfully sent broadcast to user {uid}")
         except Exception as e:
             failed += 1
-            logger.error(f"Failed to send broadcast to user {uid}: {e}")
+            logger.error(f"Failed to send broadcast to user {uid}: {str(e)}")
 
+    # Send summary
     response = f"✅ Broadcast complete\n📬 Sent: {sent}\n❌ Failed: {failed}"
     await message.reply(response)
     logger.info(f"Broadcast by {user_id} completed: Sent={sent}, Failed={failed}")
